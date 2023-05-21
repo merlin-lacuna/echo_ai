@@ -1,5 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.echo_ai">
+   <uses-permission android:name="android.permission.RECORD_AUDIO" />
+   <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- 2. To overcome bind to recognition service failed issue -->
+    <queries>
+        <package android:name="com.google.android.googlequicksearchbox"/>
+    </queries>
    <application
         android:label="echo_ai"
         android:name="${applicationName}"

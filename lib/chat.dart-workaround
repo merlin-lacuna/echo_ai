@@ -2,7 +2,10 @@ import 'package:chat_gpt_sdk/chat_gpt_sdk.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:intl/intl.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:speech_to_text/speech_recognition_error.dart';
+import 'package:speech_to_text/speech_recognition_result.dart';
+import 'package:speech_to_text/speech_to_text.dart';
+
 import 'package:flutter_tts/flutter_tts.dart';
 
 import 'model.dart';
@@ -24,7 +27,11 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   late final OpenAI _openAI;
   late bool _isLoading;
-  late stt.SpeechToText _speech;
+  final SpeechToText _speechToText = SpeechToText();
+  bool _speechEnabled = false;
+  bool _speechAvailable = false;
+  String _lastWords = '';
+  String _currentWords = '';
   late FlutterTts _tts;
   bool _isListening = false;
   final _voiceMode = false;
@@ -36,7 +43,7 @@ class _ChatPageState extends State<ChatPage> {
   void initState() {
     _messages = [];
     _isLoading = false;
-    _speech = stt.SpeechToText();
+    _initSpeech();
     _tts = FlutterTts();
 
     // Initialize ChatGPT SDK
@@ -54,43 +61,65 @@ class _ChatPageState extends State<ChatPage> {
     super.initState();
   }
 
-  void _startListening() async {
-      if (!_isListening) {
-        bool available = await _speech.initialize(
-          onStatus: (val) {
-            if (val == 'done') {
-              _stopListening();
-            }
-          },
-          onError: (val) {
-            _stopListening();
-          },
-        );
-        if (available) {
-          _speech.listen(
-            onResult: (val) {
-              setState(() {
-                _textController.text = val.recognizedWords;
-                if (val.recognizedWords.endsWith('Finished')) {
-                  _handleSubmit(_textController.text.replaceAll('Finished', '').trim());
-                  _stopListening();
-                }
-              });
-            },
-            listenFor: const Duration(minutes: 1), // Set a longer timeout duration
-            pauseFor: const Duration(seconds: 5), // Set a pause duration
-          );
-          setState(() => _isListening = true);
-        }
-      } else {
-        _stopListening();
+  void errorListener(SpeechRecognitionError error) {
+      debugPrint(error.errorMsg.toString());
+    }
+
+  void statusListener(String status) async {
+      debugPrint("status $status");
+      if (status == "done" && _speechEnabled) {
+        setState(() {
+          _lastWords += " $_currentWords";
+          _currentWords = "";
+          _speechEnabled = false;
+        });
+        await _startListening();
       }
     }
 
-  void _stopListening() {
-    _speech.stop();
-    setState(() => _isListening = false);
+  /// This has to happen only once per app
+  void _initSpeech() async {
+    _speechAvailable = await _speechToText.initialize(
+        onError: errorListener,
+        onStatus: statusListener
+    );
+    setState(() {});
   }
+
+  /// Each time to start a speech recognition session
+  Future _startListening() async {
+    debugPrint("=================================================");
+      await _stopListening();
+      await Future.delayed(const Duration(milliseconds: 50));
+      await _speechToText.listen(
+          onResult: _onSpeechResult,
+          cancelOnError: false,
+          partialResults: true,
+          listenMode: ListenMode.dictation
+      );
+      setState(() {
+        _speechEnabled = true;
+      });
+    }
+
+  /// Manually stop the active speech recognition session
+  /// Note that there are also timeouts that each platform enforces
+  /// and the SpeechToText plugin supports setting timeouts on the
+  /// listen method.
+  Future _stopListening() async {
+      setState(() {
+        _speechEnabled = false;
+      });
+      await _speechToText.stop();
+    }
+
+  /// This is the callback that the SpeechToText plugin calls when
+  /// the platform returns recognized words.
+  void _onSpeechResult(SpeechRecognitionResult result) {
+      setState(() {
+        _currentWords = result.recognizedWords;
+      });
+    }
 
   Future<void> _speak(String text) async {
     await _tts.speak(text);

@@ -1,6 +1,7 @@
 # Echo AI
-
+https://semaphoreci.com/blog/chatgpt-chatbot-flutter
 A simple character-based chatbot assistant built with Flutter and OpenAI.
+
 
 ## Getting Started
 
